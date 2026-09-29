@@ -1,9 +1,11 @@
 import os
+from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path
 
 import mysql.connector
 import pandas as pd
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from dotenv import load_dotenv
@@ -15,7 +17,7 @@ SQL_QUERY = """
 SELECT * FROM `process_result`
 """
 
-OUTPUT_FILE_PATH = BASE_DIR / "result.xlsx"
+OUTPUT_DIR = BASE_DIR / "output"
 SHEET_NAME = "process_result"
 TABLE_NAME = "ProcessResult"
 
@@ -38,6 +40,15 @@ MYSQL_DATABASE = require_env("MYSQL_DATABASE")
 MYSQL_USER = require_env("MYSQL_USER")
 MYSQL_PASSWORD = require_env("MYSQL_PASSWORD", allow_empty=True)
 
+# Email configuration
+EMAIL_RECIPIENT = require_env("EMAIL_RECIPIENT")
+EMAIL_SENDER = require_env("EMAIL_SENDER")
+EMAIL_SUBJECT = os.environ.get("EMAIL_SUBJECT", "Quality Report").strip()
+EMAIL_BODY = os.environ.get(
+    "EMAIL_BODY",
+    "Hello,\n\nPlease find the attached quality report.\n\nRegards,\nAutomation",
+).strip()
+
 
 def connect_to_mysql(host, port, database, user, password):
     return mysql.connector.connect(
@@ -47,13 +58,6 @@ def connect_to_mysql(host, port, database, user, password):
         user=user,
         password=password
     )
-
-
-def _refresh_table_range(worksheet, table_name, num_columns, num_rows):
-    """Set the table range to cover the header plus num_rows data rows."""
-    last_col = get_column_letter(num_columns)
-    last_row = num_rows + 1  # +1 for the header row
-    worksheet.tables[table_name].ref = f"A1:{last_col}{last_row}"
 
 
 def _create_table(worksheet, table_name, num_columns, num_rows):
@@ -70,7 +74,44 @@ def _create_table(worksheet, table_name, num_columns, num_rows):
     worksheet.add_table(table)
 
 
-def append_query_to_xlsx(connection, xlsx_path):
+def write_xlsx(dataframe, xlsx_path):
+    """Create a fresh xlsx with the data inside an Excel table."""
+    columns = list(dataframe.columns)
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = SHEET_NAME
+
+    worksheet.append(columns)
+    for row in dataframe.itertuples(index=False, name=None):
+        worksheet.append(list(row))
+
+    _create_table(worksheet, TABLE_NAME, len(columns), len(dataframe))
+    workbook.save(xlsx_path)
+
+
+def write_eml(xlsx_path, eml_path):
+    """Build an .eml email file with the xlsx attached."""
+    message = EmailMessage()
+    message["From"] = EMAIL_SENDER
+    message["To"] = EMAIL_RECIPIENT
+    message["Subject"] = EMAIL_SUBJECT
+    message["Date"] = datetime.now().astimezone().strftime("%a, %d %b %Y %H:%M:%S %z")
+    message.set_content(EMAIL_BODY)
+
+    with open(xlsx_path, "rb") as attachment:
+        message.add_attachment(
+            attachment.read(),
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=os.path.basename(xlsx_path),
+        )
+
+    with open(eml_path, "wb") as eml_file:
+        eml_file.write(bytes(message))
+
+
+def export_query_to_email(connection, output_dir):
 
     try:
         print("Connected to MySQL successfully.")
@@ -84,53 +125,25 @@ def append_query_to_xlsx(connection, xlsx_path):
             print("Query returned no rows. Nothing to export.")
             return
 
-        columns = list(dataframe.columns)
-        rows = dataframe.itertuples(index=False, name=None)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        xlsx_path = output_dir / f"result_{timestamp}.xlsx"
+        eml_path = output_dir / f"result_{timestamp}.eml"
 
-        file_exists = os.path.isfile(xlsx_path) and os.path.getsize(xlsx_path) > 0
-
-        if not file_exists:
-            # Create a fresh workbook with a header row and a table.
-            workbook = Workbook()
-            worksheet = workbook.active
-            worksheet.title = SHEET_NAME
-
-            worksheet.append(columns)
-            for row in rows:
-                worksheet.append(list(row))
-
-            _create_table(worksheet, TABLE_NAME, len(columns), len(dataframe))
-        else:
-            # Append to the existing sheet/table.
-            workbook = load_workbook(xlsx_path)
-
-            if SHEET_NAME in workbook.sheetnames:
-                worksheet = workbook[SHEET_NAME]
-            else:
-                worksheet = workbook.create_sheet(SHEET_NAME)
-                worksheet.append(columns)
-
-            for row in rows:
-                worksheet.append(list(row))
-
-            data_rows = worksheet.max_row - 1  # exclude header row
-            if TABLE_NAME in worksheet.tables:
-                _refresh_table_range(worksheet, TABLE_NAME, len(columns), data_rows)
-            else:
-                _create_table(worksheet, TABLE_NAME, len(columns), data_rows)
-
-        workbook.save(xlsx_path)
+        write_xlsx(dataframe, xlsx_path)
+        write_eml(xlsx_path, eml_path)
 
         print("Export completed successfully.")
-        print(f"Rows appended: {len(dataframe)}")
-        print(f"Output file: {xlsx_path}")
+        print(f"Rows exported: {len(dataframe)}")
+        print(f"Excel file: {xlsx_path}")
+        print(f"Email file: {eml_path} (to: {EMAIL_RECIPIENT})")
 
     except mysql.connector.Error as error:
         print(f"MySQL error: {error}")
 
     except PermissionError:
         print(
-            "Permission denied. Make sure the Excel file is not open "
+            "Permission denied. Make sure the output files are not open "
             "and you have access to the output folder."
         )
 
@@ -151,4 +164,4 @@ if __name__ == "__main__":
         MYSQL_USER,
         MYSQL_PASSWORD
     )
-    append_query_to_xlsx(connection, OUTPUT_FILE_PATH)
+    export_query_to_email(connection, OUTPUT_DIR)
