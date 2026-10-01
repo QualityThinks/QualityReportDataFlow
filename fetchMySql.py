@@ -82,6 +82,7 @@ def write_xlsx(dataframe, xlsx_path):
     worksheet = workbook.active
     worksheet.title = SHEET_NAME
 
+    columns = list(dataframe.columns)
     worksheet.append(columns)
     for row in dataframe.itertuples(index=False, name=None):
         worksheet.append(list(row))
