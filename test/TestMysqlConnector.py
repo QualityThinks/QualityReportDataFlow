@@ -7,6 +7,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from EnvManager import EnvManager
 from DatabaseConnection import DatabaseConnection
+from EncryptionManager import EncryptionManagerFactory
 
 def load_environment()->EnvManager:
     project_root = Path(__file__).resolve().parent.parent
@@ -14,11 +15,13 @@ def load_environment()->EnvManager:
     return EnvManager(project_root / ".env")
 
 def connect_to_mysql_database(env:EnvManager) ->DatabaseConnection:
+    # MYSQL_PASSWORD is stored encrypted; decrypt it before use.
+    encryption = EncryptionManagerFactory.from_env(env)
     host_address = env.require("MYSQL_HOST")
     port_address = env.require("MYSQL_PORT")
     database = env.require("MYSQL_DATABASE")
     user = env.require("MYSQL_USER")
-    password = env.require("MYSQL_PASSWORD")
+    password = encryption.decrypt_text(env.require("MYSQL_PASSWORD"))
     return DatabaseConnection(host_address,port_address,database,user,password)
 
 def main():

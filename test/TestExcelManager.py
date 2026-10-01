@@ -9,6 +9,7 @@ import pandas as pd
 from EnvManager import EnvManager
 from DatabaseConnection import DatabaseConnection
 from ExcelManager import ExcelManager
+from EncryptionManager import EncryptionManagerFactory
 
 SQL_QUERY = "SELECT * FROM users"
 SHEET_NAME = "users"
@@ -27,7 +28,9 @@ def connect_to_mysql_database(env: EnvManager) -> DatabaseConnection:
     port_address = env.require("MYSQL_PORT")
     database = env.require("MYSQL_DATABASE")
     user = env.require("MYSQL_USER")
-    password = env.require("MYSQL_PASSWORD")
+    encryption = EncryptionManagerFactory.from_env(env)
+    password = encryption.decrypt_text(env.require("MYSQL_PASSWORD"))
+    
     return DatabaseConnection(host_address, port_address, database, user, password)
 
 
