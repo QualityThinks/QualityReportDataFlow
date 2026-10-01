@@ -1,0 +1,70 @@
+Received: from VI3PR09MB875040.eurprd09.prod.outlook.com
+ (2603:10a6:800:380::7) by MIWPR09MB763987.eurprd09.prod.outlook.com with
+ HTTPS; Thu, 1 Oct 2026 01:30:45 +0000
+Received: from MIWPR09MB763987.eurprd09.prod.outlook.com
+ (2603:10a6:290:e2::14) by VI3PR09MB875040.eurprd09.prod.outlook.com
+ (2603:10a6:800:380::7) with Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.21.472.15; Thu, 1 Oct
+ 2026 01:30:44 +0000
+Received: from MIWPR09MB763987.eurprd09.prod.outlook.com
+ ([fe80::f965:4795:cd31:e59a]) by MIWPR09MB763987.eurprd09.prod.outlook.com
+ ([fe80::f965:4795:cd31:e59a%6]) with mapi id 15.21.0472.015; Thu, 1 Oct 2026
+ 01:30:43 +0000
+From: "Subagyo, Joshua Nehemia" <JoshuaNehemia.Subagyo@sampoerna.com>
+To: "Subagyo, Joshua Nehemia" <JoshuaNehemia.Subagyo@sampoerna.com>
+Subject: TESTING PYTHON AUTOMATION EMAIL 
+Thread-Topic: TESTING PYTHON AUTOMATION EMAIL 
+Thread-Index: AQHdUURs+6aIIY1Ay0KX6928pST2lQ==
+Date: Thu, 1 Oct 2026 01:30:43 +0000
+Message-ID:
+	<MIWPR09MB7639872AC49D37A58CCC4828CEFE8A2@MIWPR09MB763987.eurprd09.prod.outlook.com>
+Accept-Language: en-US
+Content-Language: en-US
+X-MS-Exchange-Organization-AuthAs: Internal
+X-MS-Exchange-Organization-AuthMechanism: 04
+X-MS-Exchange-Organization-AuthSource:
+	MIWPR09MB763987.eurprd09.prod.outlook.com
+X-MS-Has-Attach:
+X-MS-Exchange-Organization-Network-Message-Id:
+	e0992aec-4834-49c3-8d2d-08df1f5b9c8e
+X-MS-Exchange-Organization-SCL: 1
+X-MS-TNEF-Correlator:
+X-MS-Exchange-Organization-RecordReviewCfmType: 0
+msip_labels:
+	MSIP_Label_326ba123-f524-4edb-8ec0-4fe5ac767d3b_Enabled=True;MSIP_Label_326ba123-f524-4edb-8ec0-4fe5ac767d3b_SiteId=8b86a65e-3c3a-4406-8ac3-19a6b5cc52bc;MSIP_Label_326ba123-f524-4edb-8ec0-4fe5ac767d3b_SetDate=2026-10-01T01:30:44.861Z;MSIP_Label_326ba123-f524-4edb-8ec0-4fe5ac767d3b_Name=Internal;MSIP_Label_326ba123-f524-4edb-8ec0-4fe5ac767d3b_ContentBits=1;MSIP_Label_326ba123-f524-4edb-8ec0-4fe5ac767d3b_Method=Standard;
+x-ms-publictraffictype: Email
+x-ms-exchange-crosstenant-id: 8b86a65e-3c3a-4406-8ac3-19a6b5cc52bc
+X-Microsoft-Antispam-Mailbox-Delivery:
+	ucf:0;jmr:0;auth:0;dest:I;ENG:(910005)(944506478)(944626604)(920097)(425001)(930201)(20251009189)(140003)(1420198);
+X-Microsoft-Antispam-Message-Info:
+	Xq7BSLaucw+3ZCKL7R9Aha65rjU0ROuoJ3E1t276knltMdSlcUzQ/fKRSJl76lsVhAKVd6DwLSjDhJSMbMGuNKT+S823VI1PGYNJlE5586KLKriWAMMLhpoTMwbd1tW3nBlctjlCvlNqKeKtJWWqnlW+hhnSZeSrGfT21DNBRW7FENg7A8qCfpBu5z3hQhLHQBfGQC2CgM0k7mw5zFaNX0bzRPUYRiCs/cJb5YhnV7L1v2G2IyCg2XqEohImL4+Il8jsjZF3foiKluL28Id0xFltVkgUtihIL7PPNPAKS23A/2/LI1BL3xVx7/qzpikSSlmfpBrlr3IRs+g+wMSbQWpos0mTA/MPqFhciLETp2OvphPiHbjWFC1VmzSDNHh9q2LLyom/qkcXHbFO5/Lh+t8kYQUCQ04wCHRsscWKvvUpFW1fpMpjLYo1I7tUyfN0t5Vudw1xcCYR201Mp0CW4q29uXPCNzJIJpUJC3I0AR+tXDDt+p6LKcwrALIJJoGvlcfCQNHLdLms2rKZEPLWEyNb22yP772XqaMe/p8nvTeo0tnUelpILFDQALBnhRlh2S3W+4dCpYZdSSudJFVtsLelXJkmTU1/lkZB9RZ6mQG/cMCXE99U8zkTqIgNUtAmAPo65lraBxTjFMW1nWIWZI5dosLVsq+Fmk8OsAPir+nNtsa6VE3h5gNoseJ0Cka2zZ1i9PR2P5Gq2R7MoPTXKQUQU9OB7bJEclxMWugKil4k+oPcgSg1K4K7PZ2+d1Nos9sbRVPBNtZ9jdnyTdvwQ2zNmkh90PfHg8WLFIoXCT+/EccD6bXNng41zArE1ZlA
+Content-Type: multipart/alternative;
+	boundary="_000_MIWPR09MB7639872AC49D37A58CCC4828CEFE8A2MIWPR09MB763987_"
+MIME-Version: 1.0
+
+--_000_MIWPR09MB7639872AC49D37A58CCC4828CEFE8A2MIWPR09MB763987_
+Content-Type: text/plain; charset="iso-8859-1"
+Content-Transfer-Encoding: quoted-printable
+
+Hello this is the email body
+
+--_000_MIWPR09MB7639872AC49D37A58CCC4828CEFE8A2MIWPR09MB763987_
+Content-Type: text/html; charset="iso-8859-1"
+Content-Transfer-Encoding: quoted-printable
+
+<html>
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Diso-8859-=
+1">
+<style type=3D"text/css" style=3D"display:none;"> P {margin-top:0;margin-bo=
+ttom:0;} </style>
+</head>
+<body dir=3D"ltr">
+<div style=3D"direction: ltr; font-family: Aptos, Aptos_EmbeddedFont, Aptos=
+_MSFontService, Calibri, Helvetica, sans-serif; font-size: 11pt; color: rgb=
+(0, 0, 0);" class=3D"elementToProof">
+Hello this is the email body</div>
+</body>
+</html>
+
+--_000_MIWPR09MB7639872AC49D37A58CCC4828CEFE8A2MIWPR09MB763987_--
