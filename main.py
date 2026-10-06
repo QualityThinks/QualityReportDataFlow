@@ -9,9 +9,14 @@
 
 Run from the project root:
     python main.py
+
+Gmail login uses OAuth2 (SMTP_AUTH = oauth2 in .env), no app password.
+Run script\\create_oauth_token.py once to set it up.
 """
 
 import sys
+import json
+from datetime import date
 from datetime import datetime
 from pathlib import Path
 
@@ -21,33 +26,56 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 import pandas as pd
 
 from DatabaseConnection import DatabaseConnection
-from EmailManager import EmailManager
+from EmailManager import EmailManager, EmailManagerFactory
 from EncryptionManager import EncryptionManager, EncryptionManagerFactory
 from EnvManager import EnvManager
 from ExcelManager import ExcelManager
 from FileManager import FileManager
 
 #region CONFIG
-SQL_QUERY = "SELECT * FROM users"
+JSON_PATH = "cache.json"
+SQL_QUERY = """
+SELECT * FROM `daily_report`
+WHERE end > %s;
+"""
 SQL_PARAMETERS: dict = {}
 
 SHEET_NAME = "users"
 TABLE_NAME = "Users"
 REPORT_NAME = "quality_report"
+LIST_CC_EMAIL = [
+    "mohammadfirman.fardiansyah@sampoerna.com",
+]
 
-EMAIL_SUBJECT_DEFAULT = "Quality Report"
+EMAIL_SUBJECT_DEFAULT = f"[QID] Quality Inspection Device - Rungkut 1 - Unit 1 - {date.today()}"
 EMAIL_BODY = """\
 <html>
   <body>
-    <h2>Quality Report</h2>
-    <p>Hello,</p>
-    <p>Please find the latest quality report attached ({row_count} rows).</p>
+    <h1>Quality Inspection Device Report</h1>
+    <p>Dear,</p>
+    <p>Please find the latest quality inspection report attached.</p><br>
     <p>Regards,<br>Automation</p>
   </body>
 </html>
 """
 #endregion
 
+def load_parameters(path: str = JSON_PATH) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        if not isinstance(data, dict):
+            raise ValueError("Cache JSON must contain an object.")
+        return data
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid JSON in {path}: {error}") from error
+
+
+def update_cache(params: dict, path: str = JSON_PATH) -> None:
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(params, file, indent=4)
 
 # 1. Load ENV
 def load_environment() -> EnvManager:
@@ -61,14 +89,31 @@ def connect_to_mysql_database(env: EnvManager, encryption: EncryptionManager) ->
         env.require("MYSQL_PORT"),
         env.require("MYSQL_DATABASE"),
         env.require("MYSQL_USER"),
-        encryption.decrypt_text(env.require("MYSQL_PASSWORD")),
+        env.get("MYSQL_PASSWORD",""),
     )
 
 
 # 3. Run the query
 def run_query(dbconn: DatabaseConnection) -> pd.DataFrame:
-    rows = dbconn.query(SQL_QUERY, SQL_PARAMETERS)
-    return pd.DataFrame(rows)
+    sql_parameters = load_parameters()
+    last_end_timestamp = sql_parameters.get("last_end_timestamp")
+    rows = dbconn.query(
+        SQL_QUERY,
+        (last_end_timestamp,),
+    )
+    dataframe = pd.DataFrame(rows)
+
+    if dataframe.empty or "end" not in dataframe.columns:
+        return dataframe
+
+    newest_end_timestamp = dataframe["end"].max()
+
+    if pd.notna(newest_end_timestamp):
+        update_cache({
+            "last_end_timestamp": newest_end_timestamp.isoformat()
+        })
+
+    return dataframe
 
 
 # 4. Make it into Excel (reports/<year>/<month>/quality_report_<timestamp>.xlsx)
@@ -84,23 +129,18 @@ def write_excel(dataframe: pd.DataFrame, now: datetime) -> Path:
 
 
 # 5. Build the email with the Excel attachment
+#    SMTP settings and the login (SMTP_AUTH = oauth2 for Gmail, or password)
+#    come from .env; the factory decrypts the stored secrets.
 def build_email(
     env: EnvManager,
     encryption: EncryptionManager,
     xlsx_path: Path,
     row_count: int,
 ) -> EmailManager:
-    email = EmailManager(
-        smtp_host=env.require("SMTP_HOST"),
-        smtp_port=env.get_int("SMTP_PORT", 587),
-        smtp_security=env.get("SMTP_SECURITY", "starttls"),
-        smtp_user=env.get("SMTP_USER", "") or "",
-        smtp_password=encryption.decrypt_text(env.require("SMTP_PASSWORD")),
-        smtp_timeout=env.get_int("SMTP_TIMEOUT", 30),
-        sender=env.require("EMAIL_SENDER"),
-    )
+    email = EmailManagerFactory.from_env(env, encryption)
     email.set_to(env.require("EMAIL_RECIPIENT"))
     email.set_subject(env.get("EMAIL_SUBJECT", EMAIL_SUBJECT_DEFAULT))
+    email.set_cc(LIST_CC_EMAIL)
     email.set_body(EMAIL_BODY.format(row_count=row_count))
     email.attach_file(xlsx_path)
     return email
@@ -142,4 +182,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as error:  # noqa: BLE001
         print(f"Flow failed: {type(error).__name__}: {error}")
+        # import traceback
+        # traceback.print_exc()
         sys.exit(1)
