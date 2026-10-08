@@ -2,9 +2,12 @@ import mimetypes
 import re
 import smtplib
 import ssl
+from collections.abc import Callable
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from pathlib import Path
+
+from OAuthManager import OAuthManagerFactory
 
 
 class EmailManager:
@@ -15,17 +18,24 @@ class EmailManager:
     EnvManager. The object holds the message state; configure it with the
     set_* / add_* methods (which chain) and then call send():
 
-        email = EmailManagerFactory.from_env(env)
+        email = EmailManagerFactory.from_env(env, encryption)
         email.set_subject("Quality Report")
         email.set_body("<h1>Hello</h1><p>See attached.</p>")
         email.add_to("someone@example.com")
         email.attach_file("output/report.xlsx")
         email.send()
+
+    Login (smtp_auth):
+        "password"  SMTP AUTH with smtp_user / smtp_password (skipped if no user)
+        "oauth2"    SMTP AUTH XOAUTH2 with smtp_user and an access token from
+                    oauth_token_provider (e.g. OAuthManager.get_access_token).
+                    This is how Gmail works without an app password.
     """
 
     #region CONSTANTS
     EMAIL_REGEX = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
     VALID_SECURITIES = ("starttls", "ssl", "none")
+    VALID_AUTHS = ("password", "oauth2")
     #endregion
 
     #region FIELDS
@@ -42,6 +52,8 @@ class EmailManager:
     __smtp_user: str
     __smtp_password: str
     __smtp_timeout: int
+    __smtp_auth: str
+    __oauth_token_provider: Callable[[], str] | None
     #endregion
 
     def __init__(
@@ -53,6 +65,8 @@ class EmailManager:
         smtp_password: str = "",
         smtp_timeout: int = 30,
         sender: str = "",
+        smtp_auth: str = "password",
+        oauth_token_provider: Callable[[], str] | None = None,
     ):
         """Create an empty message with explicit SMTP settings."""
         if not smtp_host:
@@ -64,12 +78,22 @@ class EmailManager:
                 f"smtp_security must be one of {self.VALID_SECURITIES}, got '{smtp_security}'."
             )
 
+        auth = (smtp_auth or "password").lower()
+        if auth not in self.VALID_AUTHS:
+            raise ValueError(f"smtp_auth must be one of {self.VALID_AUTHS}, got '{smtp_auth}'.")
+        if auth == "oauth2" and not smtp_user:
+            raise ValueError("smtp_user is required for oauth2 (the account that granted access).")
+        if auth == "oauth2" and oauth_token_provider is None:
+            raise ValueError("oauth_token_provider is required for oauth2.")
+
         self.__smtp_host = smtp_host
         self.__smtp_port = int(smtp_port)
         self.__smtp_security = security
         self.__smtp_user = smtp_user
         self.__smtp_password = smtp_password
         self.__smtp_timeout = int(smtp_timeout)
+        self.__smtp_auth = auth
+        self.__oauth_token_provider = oauth_token_provider
 
         self.__sender = self.__validate(sender) if sender else ""
         self.__to = []
@@ -196,7 +220,25 @@ class EmailManager:
     def send(self) -> None:
         """Build the message and send it over SMTP using the constructor settings."""
         message = self.build_message()
-        recipients = self.recipients
+        server = self.__open_connection()
+        try:
+            # send_message reads From/To/Cc and strips Bcc; pass recipients
+            # explicitly so Bcc addresses still receive the message.
+            server.send_message(message, from_addr=self.__sender, to_addrs=self.recipients)
+        finally:
+            self.__close_connection(server)
+
+    def verify_login(self) -> None:
+        """Connect and log in without sending anything, to check the SMTP settings."""
+        self.__close_connection(self.__open_connection())
+    #endregion
+
+    #region SMTP CONNECTION
+    def __open_connection(self) -> smtplib.SMTP:
+        """Connect, switch to TLS if configured, and log in (password or XOAUTH2)."""
+        # Get the OAuth token before connecting, so a token problem fails
+        # without leaving an SMTP connection open.
+        access_token = self.__oauth_token_provider() if self.__smtp_auth == "oauth2" else None
 
         context = ssl.create_default_context()
         if self.__smtp_security == "ssl":
@@ -205,22 +247,54 @@ class EmailManager:
             )
         else:
             server = smtplib.SMTP(self.__smtp_host, self.__smtp_port, timeout=self.__smtp_timeout)
-
+            # server.set_debuglevel(1)
         try:
             server.ehlo()
             if self.__smtp_security == "starttls":
                 server.starttls(context=context)
                 server.ehlo()
-            if self.__smtp_user:
+            if access_token is not None:
+                self.__login_xoauth2(server, access_token)
+            elif self.__smtp_user:
                 server.login(self.__smtp_user, self.__smtp_password)
-            # send_message reads From/To/Cc and strips Bcc; pass recipients
-            # explicitly so Bcc addresses still receive the message.
-            server.send_message(message, from_addr=self.__sender, to_addrs=recipients)
-        finally:
-            try:
-                server.quit()
-            except smtplib.SMTPException:
-                server.close()
+        except BaseException:
+            self.__close_connection(server)
+            raise
+        return server
+
+    def __login_xoauth2(self, server: smtplib.SMTP, access_token: str) -> None:
+        """SMTP AUTH XOAUTH2: log in with an OAuth access token instead of a password."""
+        offered = server.esmtp_features.get("auth", "").upper().split()
+        if "XOAUTH2" not in offered:
+            raise smtplib.SMTPNotSupportedError(
+                f"{self.__smtp_host} does not offer XOAUTH2 login "
+                f"(offers: {', '.join(offered) or 'no AUTH'}). For Gmail use port 587 "
+                "with SMTP_SECURITY=starttls, or port 465 with ssl."
+            )
+
+        auth_string = f"user={self.__smtp_user}\x01auth=Bearer {access_token}\x01\x01"
+        try:
+            # smtplib calls this once for the initial response, then again with
+            # the server's error challenge; answering that with "" makes the
+            # server return its final 535 instead of waiting.
+            server.auth("XOAUTH2", lambda challenge=None: auth_string if challenge is None else "")
+        except smtplib.SMTPAuthenticationError as error:
+            reply = error.smtp_error
+            if isinstance(reply, bytes):
+                reply = reply.decode("utf-8", "replace")
+            raise smtplib.SMTPAuthenticationError(
+                error.smtp_code,
+                f"{' '.join(str(reply).split())} | OAuth login for {self.__smtp_user} was "
+                "rejected. The token must come from signing in as this account with Gmail "
+                "access allowed: run script\\create_oauth_token.py again.",
+            ) from error
+
+    @staticmethod
+    def __close_connection(server: smtplib.SMTP) -> None:
+        try:
+            server.quit()
+        except OSError:  # includes SMTPException; never hide the original error
+            server.close()
     #endregion
 
 
@@ -228,19 +302,41 @@ class EmailManagerFactory:
     """Logic layer: reads SMTP settings from an EnvManager and builds an EmailManager."""
 
     @staticmethod
-    def from_env(env) -> EmailManager:
-        """Build an EmailManager from an EnvManager (or compatible object).
+    def from_env(env, encryption) -> EmailManager:
+        """Build an EmailManager from an EnvManager and an EncryptionManager.
 
-        Expects the same .env keys used by sendEmail.py:
-            SMTP_HOST, SMTP_PORT, SMTP_SECURITY, SMTP_USER,
-            SMTP_PASSWORD, SMTP_TIMEOUT, EMAIL_SENDER
+        Expects these .env keys:
+            SMTP_HOST, EMAIL_SENDER
+            SMTP_PORT (587), SMTP_SECURITY (starttls), SMTP_TIMEOUT (30)
+            SMTP_AUTH       oauth2 or password (default: password)
+            SMTP_USER       login account; required for oauth2
+            SMTP_PASSWORD   encrypted; only for SMTP_AUTH = password
+            OAUTH_*         only for SMTP_AUTH = oauth2 (see OAuthManagerFactory)
+
+        `encryption` decrypts the stored secrets (SMTP_PASSWORD / OAUTH_*).
         """
+        auth = (env.get("SMTP_AUTH") or "password").lower()
+        if auth not in EmailManager.VALID_AUTHS:
+            raise ValueError(f"SMTP_AUTH must be one of {EmailManager.VALID_AUTHS}, got '{auth}'.")
+
+        settings = {
+            "smtp_host": env.require("SMTP_HOST"),
+            "smtp_port": env.get_int("SMTP_PORT", 587),
+            "smtp_security": env.get("SMTP_SECURITY", "starttls"),
+            "smtp_timeout": env.get_int("SMTP_TIMEOUT", 30),
+            "sender": env.require("EMAIL_SENDER"),
+            "smtp_auth": auth,
+        }
+        if auth == "oauth2":
+            smtp_user = env.require("SMTP_USER")
+            oauth = OAuthManagerFactory.from_env(env, encryption)
+            return EmailManager(
+                smtp_user=smtp_user,
+                oauth_token_provider=oauth.get_access_token,
+                **settings,
+            )
         return EmailManager(
-            smtp_host=env.require("SMTP_HOST"),
-            smtp_port=env.get_int("SMTP_PORT", 587),
-            smtp_security=env.get("SMTP_SECURITY", "starttls"),
             smtp_user=env.get("SMTP_USER", "") or "",
-            smtp_password=env.get("SMTP_PASSWORD", "") or "",
-            smtp_timeout=env.get_int("SMTP_TIMEOUT", 30),
-            sender=env.get("EMAIL_SENDER", "") or "",
+            smtp_password=encryption.decrypt_text(env.require("SMTP_PASSWORD")),
+            **settings,
         )
