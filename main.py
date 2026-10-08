@@ -36,7 +36,7 @@ from FileManager import FileManager
 JSON_PATH = "cache.json"
 SQL_QUERY = """
 SELECT * FROM `daily_report`
-WHERE end > %s;
+WHERE end > %(last_end_timestamp)s;
 """
 SQL_PARAMETERS: dict = {}
 
@@ -96,18 +96,16 @@ def connect_to_mysql_database(env: EnvManager, encryption: EncryptionManager) ->
 # 3. Run the query
 def run_query(dbconn: DatabaseConnection) -> pd.DataFrame:
     sql_parameters = load_parameters()
-    last_end_timestamp = sql_parameters.get("last_end_timestamp")
     rows = dbconn.query(
         SQL_QUERY,
-        (last_end_timestamp,),
+        sql_parameters
     )
     dataframe = pd.DataFrame(rows)
-
-    if dataframe.empty or "end" not in dataframe.columns:
+    
+    if dataframe.empty or "End" not in dataframe.columns:
         return dataframe
 
-    newest_end_timestamp = dataframe["end"].max()
-
+    newest_end_timestamp = dataframe["End"].max()
     if pd.notna(newest_end_timestamp):
         update_cache({
             "last_end_timestamp": newest_end_timestamp.isoformat()
