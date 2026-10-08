@@ -16,6 +16,7 @@ Run script\\create_oauth_token.py once to set it up.
 
 import sys
 import json
+import numpy as np
 from datetime import date
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +59,13 @@ EMAIL_BODY = """\
   </body>
 </html>
 """
+
+TARGET_CW = 2.02
+TOLERANCE_CW = 0.14 
+TARGET_BE = 10
+TOLERANCE_BE = 0.25
+TARGET_ME = 8
+TOLERANCE_ME = 0.25
 #endregion
 
 def load_parameters(path: str = JSON_PATH) -> dict:
@@ -143,6 +151,174 @@ def build_email(
     email.attach_file(xlsx_path)
     return email
 
+def check_in_spec(
+    value: float,
+    target: float,
+    tolerance: float
+) -> bool:
+    """
+    Check whether a value is within the allowed target tolerance.
+
+    Example:
+        target = 10
+        tolerance = 2
+        valid range = 8 to 12
+    """
+    if pd.isna(value):
+        return False
+
+    minimum_value = target - tolerance
+    maximum_value = target + tolerance
+
+    return minimum_value <= value <= maximum_value
+
+
+def calculate_in_spec_percentage(
+    values: list[float],
+    target: float,
+    tolerance: float
+) -> np.float32:
+    """
+    Calculate the percentage of values that are within specification.
+    """
+    valid_values = [
+        value
+        for value in values
+        if not pd.isna(value)
+    ]
+
+    if not valid_values:
+        return np.float32(0.0)
+
+    in_spec_count = sum(
+        check_in_spec(value, target, tolerance)
+        for value in valid_values
+    )
+
+    percentage = (in_spec_count / len(valid_values)) * 100
+
+    return np.float32(percentage)
+
+
+def process_dataframe(
+    df: pd.DataFrame,
+    env
+) -> pd.DataFrame:
+    processed_rows = []
+    date_today = datetime.now().strftime("%y%m%d")
+
+    # Read environment variables once instead of reading them
+    # repeatedly for every DataFrame row.
+    plant = env.Require("PLANT")
+    location = env.Require("LOCATION")
+    group = env.Require("GROUP")
+    brand = env.Require("BRAND")
+    bagian = env.Require("BAGIAN")
+
+    for increment, (_, row) in enumerate(df.iterrows(), start=1):
+
+        # Calculate the average for each CW inspection.
+        avg_cw_1 = np.float32(row["Avg CW [1]"] / 3)
+        avg_cw_2 = np.float32(row["Avg CW [2]"] / 3)
+
+        # Calculate the overall CW average.
+        avg_cw = np.float32(
+            np.mean([
+                avg_cw_1,
+                avg_cw_2,
+            ])
+        )
+
+        # BE measurements
+        be_values = [
+            row["UB [1]"],
+            row["UB [2]"],
+            row["UB [3]"],
+            row["UB [4]"],
+            row["UB [5]"],
+            row["UB [6]"],
+        ]
+
+        avg_dia_be = np.float32(
+            np.nanmean(be_values)
+        )
+
+        # Replace these column names if your ME columns use
+        # different names.
+        me_values = [
+            row["UM [1]"],
+            row["UM [2]"],
+            row["UM [3]"],
+            row["UM [4]"],
+            row["UM [5]"],
+            row["UM [6]"],
+        ]
+
+        avg_dia_me = np.float32(
+            np.nanmean(me_values)
+        )
+
+        new_row = {
+            "Tanggapan ID": f"{date_today}-{increment:03d}",
+            "Tanggal Pemeriksaan": row["Start"],
+            "Plant/Reg": plant,
+            "Location": location,
+            "Group/Cell": group,
+            "No Id Pekerja": row["ID PPSKT"],
+            "Brand": brand,
+            "Bagian": bagian,
+
+            # New calculated CW columns
+            "Avg Cw [1]": avg_cw_1,
+            "Avg Cw [2]": avg_cw_2,
+            "Avg Cw": avg_cw,
+
+            # Diameter averages
+            "Avg Dia Be": avg_dia_be,
+            "Avg Dia Me": avg_dia_me,
+
+            # In-spec percentages
+            "% In Spec Cw": calculate_in_spec_percentage(
+                values=[
+                    avg_cw_1,
+                    avg_cw_2,
+                ],
+                target=TARGET_CW,
+                tolerance=TOLERANCE_CW,
+            ),
+
+            "% In Spec Be": calculate_in_spec_percentage(
+                values=be_values,
+                target=TARGET_BE,
+                tolerance=TOLERANCE_BE,
+            ),
+
+            "% In Spec Me": calculate_in_spec_percentage(
+                values=me_values,
+                target=TARGET_ME,
+                tolerance=TOLERANCE_ME,
+            ),
+        }
+
+        # Put calculated columns first and retain all original columns
+        # after them.
+        #
+        # Original columns with the same names as new columns are excluded
+        # so that they do not overwrite the calculated results.
+        original_columns = {
+            column: value
+            for column, value in row.to_dict().items()
+            if column not in new_row
+        }
+
+        combined_row = {
+            **new_row,
+            **original_columns,
+        }
+
+        processed_rows.append(combined_row)
+
+    return pd.DataFrame(processed_rows)
 
 def main() -> int:
     now = datetime.now()
@@ -155,6 +331,7 @@ def main() -> int:
     with connect_to_mysql_database(env, encryption) as dbconn:
         print("3) Running query")
         dataframe = run_query(dbconn)
+        dataframe = process_dataframe(dataframe,env)
 
     if dataframe.empty:
         print("   Query returned no rows. Nothing to report.")
