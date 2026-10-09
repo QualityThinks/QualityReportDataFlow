@@ -8,13 +8,6 @@
 6. Build an email with the Excel file attached
 7. Send the email
 8. Update the query cache after successful delivery
-
-Run from the project root:
-
-    python main.py
-
-Gmail login uses OAuth2 when SMTP_AUTH=oauth2 is configured in .env.
-Run script/create_oauth_token.py once to set it up.
 """
 
 import json
