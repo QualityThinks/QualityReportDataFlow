@@ -209,11 +209,11 @@ def process_dataframe(
 
     # Read environment variables once instead of reading them
     # repeatedly for every DataFrame row.
-    plant = env.Require("PLANT")
-    location = env.Require("LOCATION")
-    group = env.Require("GROUP")
-    brand = env.Require("BRAND")
-    bagian = env.Require("BAGIAN")
+    plant = env.require("PLANT")
+    location = env.require("LOCATION")
+    group = env.require("GROUP")
+    brand = env.require("BRAND")
+    bagian = env.require("BAGIAN")
 
     for increment, (_, row) in enumerate(df.iterrows(), start=1):
 
