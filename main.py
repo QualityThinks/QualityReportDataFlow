@@ -390,7 +390,7 @@ def calculate_in_spec_percentage(
         for value in valid_values
     )
 
-    percentage = (in_spec_count / len(valid_values)) * 100.0
+    percentage = (in_spec_count / len(valid_values))
     return percentage if math.isfinite(percentage) else pd.NA
 
 
@@ -444,6 +444,7 @@ def process_dataframe(
     group = env.require("GROUP")
     brand = env.require("BRAND")
     bagian = env.require("BAGIAN")
+    setsample = env.require("SET_SAMPLE")
     date_today = report_datetime.strftime("%y%m%d")
     processed_rows: list[dict[str, Any]] = []
 
@@ -471,6 +472,7 @@ def process_dataframe(
             "No Id Pekerja": get_row_value(row, "ID PPSKT"),
             "Brand": brand,
             "Bagian": bagian,
+            "Set Sample": setsample,
             "Avg Cw [First]": avg_cw_first,
             "Avg Cw [Second]": avg_cw_second,
             "Avg Cw": avg_cw,
