@@ -66,6 +66,30 @@ TARGET_BE = 10
 TOLERANCE_BE = 0.25
 TARGET_ME = 8
 TOLERANCE_ME = 0.25
+NUMERIC_FEATURES = [
+    "Avg Cw [First]",
+    "Avg Cw [Second]",
+    "Avg Cw",
+    "Avg Dia Be",
+    "Avg Dia Me",
+    "In Spec Cw",
+    "In Spec Be",
+    "In Spec Me",
+    "UB [1]",
+    "UB [2]",
+    "UB [3]",
+    "UB [4]",
+    "UB [5]",
+    "UB [6]",
+    "UH [1]",
+    "UH [2]",
+    "UH [3]",
+    "UH [4]",
+    "UH [5]",
+    "UH [6]",
+    "Avg CW [1]",
+    "Avg CW [2]",
+]
 #endregion
 
 def load_parameters(path: str = JSON_PATH) -> dict:
@@ -102,25 +126,79 @@ def connect_to_mysql_database(env: EnvManager, encryption: EncryptionManager) ->
 
 
 # 3. Run the query
+NUMERIC_FEATURES = [
+    "Avg Cw [1]",
+    "Avg Cw [2]",
+    "Avg Cw",
+    "Avg Dia Be",
+    "Avg Dia Me",
+    "In Spec Cw",
+    "In Spec Be",
+    "In Spec Me",
+    "UB [1]",
+    "UB [2]",
+    "UB [3]",
+    "UB [4]",
+    "UB [5]",
+    "UB [6]",
+    "UH [1]",
+    "UH [2]",
+    "UH [3]",
+    "UH [4]",
+    "UH [5]",
+    "UH [6]",
+    "Avg CW [1]2",
+    "Avg CW [2]3",
+]
+
+
 def run_query(dbconn: DatabaseConnection) -> pd.DataFrame:
     sql_parameters = load_parameters()
+
     rows = dbconn.query(
         SQL_QUERY,
         sql_parameters
     )
+
     dataframe = pd.DataFrame(rows)
-    
-    if dataframe.empty or "End" not in dataframe.columns:
+
+    if dataframe.empty:
         return dataframe
 
+    # Convert numeric features to 64-bit floating-point values.
+    # Decimal comma example: "12,75" -> 12.75
+    existing_numeric_features = [
+        column
+        for column in NUMERIC_FEATURES
+        if column in dataframe.columns
+    ]
+
+    for column in existing_numeric_features:
+        dataframe[column] = pd.to_numeric(
+            dataframe[column]
+                .astype("string")
+                .str.strip()
+                .str.replace(",", ".", regex=False),
+            errors="coerce"
+        ).astype("Float64")
+
+    # Convert End to datetime before finding the newest timestamp.
+    if "End" not in dataframe.columns:
+        return dataframe
+
+    dataframe["End"] = pd.to_datetime(
+        dataframe["End"],
+        errors="coerce"
+    )
+
     newest_end_timestamp = dataframe["End"].max()
+
     if pd.notna(newest_end_timestamp):
         update_cache({
             "last_end_timestamp": newest_end_timestamp.isoformat()
         })
 
     return dataframe
-
 
 # 4. Make it into Excel (reports/<year>/<month>/quality_report_<timestamp>.xlsx)
 def write_excel(dataframe: pd.DataFrame, now: datetime) -> Path:
@@ -209,11 +287,11 @@ def process_dataframe(
 
     # Read environment variables once instead of reading them
     # repeatedly for every DataFrame row.
-    plant = env.require("PLANT")
-    location = env.require("LOCATION")
-    group = env.require("GROUP")
-    brand = env.require("BRAND")
-    bagian = env.require("BAGIAN")
+    plant = env.Require("PLANT")
+    location = env.Require("LOCATION")
+    group = env.Require("GROUP")
+    brand = env.Require("BRAND")
+    bagian = env.Require("BAGIAN")
 
     for increment, (_, row) in enumerate(df.iterrows(), start=1):
 
@@ -270,8 +348,8 @@ def process_dataframe(
             "Bagian": bagian,
 
             # New calculated CW columns
-            "Avg Cw [1]": avg_cw_1,
-            "Avg Cw [2]": avg_cw_2,
+            "Avg Cw [First]": avg_cw_1,
+            "Avg Cw [Second]": avg_cw_2,
             "Avg Cw": avg_cw,
 
             # Diameter averages
