@@ -246,12 +246,12 @@ def process_dataframe(
         # Replace these column names if your ME columns use
         # different names.
         me_values = [
-            row["UM [1]"],
-            row["UM [2]"],
-            row["UM [3]"],
-            row["UM [4]"],
-            row["UM [5]"],
-            row["UM [6]"],
+            row["UH [1]"],
+            row["UH [2]"],
+            row["UH [3]"],
+            row["UH [4]"],
+            row["UH [5]"],
+            row["UH [6]"],
         ]
 
         avg_dia_me = np.float32(
@@ -260,6 +260,7 @@ def process_dataframe(
 
         new_row = {
             "Tanggapan ID": f"{date_today}-{increment:03d}",
+            "Tanggal Pengiriman": datetime.now(),
             "Tanggal Pemeriksaan": row["Start"],
             "Plant/Reg": plant,
             "Location": location,
@@ -278,7 +279,7 @@ def process_dataframe(
             "Avg Dia Me": avg_dia_me,
 
             # In-spec percentages
-            "% In Spec Cw": calculate_in_spec_percentage(
+            "In Spec Cw": calculate_in_spec_percentage(
                 values=[
                     avg_cw_1,
                     avg_cw_2,
@@ -287,13 +288,13 @@ def process_dataframe(
                 tolerance=TOLERANCE_CW,
             ),
 
-            "% In Spec Be": calculate_in_spec_percentage(
+            "In Spec Be": calculate_in_spec_percentage(
                 values=be_values,
                 target=TARGET_BE,
                 tolerance=TOLERANCE_BE,
             ),
 
-            "% In Spec Me": calculate_in_spec_percentage(
+            "In Spec Me": calculate_in_spec_percentage(
                 values=me_values,
                 target=TARGET_ME,
                 tolerance=TOLERANCE_ME,
