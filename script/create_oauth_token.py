@@ -23,8 +23,10 @@ Usage:
 
 Your browser opens Google's sign-in page. Sign in as SMTP_USER and allow
 access. Google warns that the app isn't verified; it's your own app, so click
-Advanced > Go to <app name>. The script then checks the SMTP login and prints
-the lines to add to .env.
+Advanced > Go to <app name>. The script then checks the Gmail SMTP login and
+prints the OAUTH_REFRESH_TOKEN line to add to .env.
+
+The full walkthrough is in installation-module\\module-en.md.
 """
 
 import html
@@ -39,7 +41,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from EmailManager import EmailManager
+from EmailManager import EmailManagerFactory
 from EncryptionManager import EncryptionManagerFactory
 from EnvManager import EnvManager
 from OAuthManager import OAuthManager, OAuthManagerFactory
@@ -107,17 +109,9 @@ def get_refresh_token(oauth: OAuthManager, smtp_user: str) -> str:
     return oauth.exchange_code(params["code"], redirect_uri, verifier)
 
 
-def check_smtp_login(env: EnvManager, oauth: OAuthManager, smtp_user: str) -> None:
-    """Log in to the SMTP server with the new token, without sending anything."""
-    EmailManager(
-        smtp_host=env.get("SMTP_HOST", "smtp.gmail.com"),
-        smtp_port=env.get_int("SMTP_PORT", 587),
-        smtp_security=env.get("SMTP_SECURITY", "starttls"),
-        smtp_user=smtp_user,
-        smtp_timeout=env.get_int("SMTP_TIMEOUT", 30),
-        smtp_auth="oauth2",
-        oauth_token_provider=oauth.get_access_token,
-    ).verify_login()
+def check_smtp_login(env: EnvManager, encryption, oauth: OAuthManager) -> None:
+    """Log in to Gmail SMTP with the new token, without sending anything."""
+    EmailManagerFactory.from_env(env, encryption, oauth).verify_login()
 
 
 def main():
@@ -139,18 +133,17 @@ def main():
         print(f"\nSign-in failed: {type(error).__name__}: {error}")
         return 1
 
-    print("\nAccess granted. Checking the SMTP login...")
+    print("\nAccess granted. Checking the Gmail SMTP login...")
     try:
-        check_smtp_login(env, oauth, smtp_user)
+        check_smtp_login(env, encryption, oauth)
     except Exception as error:  # noqa: BLE001
         print(f"SMTP login failed: {type(error).__name__}: {error}")
-        print(f"Check that you signed in as {smtp_user}, and that SMTP_HOST / SMTP_PORT /")
-        print("SMTP_SECURITY are smtp.gmail.com / 587 / starttls. Then run this script again.")
+        print(f"Check that you signed in as {smtp_user}. If SMTP_PORT / SMTP_SECURITY are set")
+        print("in .env, use 587 / starttls or 465 / ssl. Then run this script again.")
         return 1
 
     print("SMTP login OK.\n")
-    print("Add these to your .env:\n")
-    print("SMTP_AUTH = oauth2")
+    print("Add this to your .env:\n")
     print(f"OAUTH_REFRESH_TOKEN = {encryption.encrypt_text(refresh_token)}")
     return 0
 

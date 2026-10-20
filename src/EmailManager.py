@@ -7,15 +7,15 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from pathlib import Path
 
-from OAuthManager import OAuthManagerFactory
+from OAuthManager import OAuthManager, OAuthManagerFactory
 
 
 class EmailManager:
     """Build and send a single HTML email over SMTP.
 
     SMTP settings are passed in through the constructor (not read from the
-    environment here); use EmailManagerFactory to build an instance from an
-    EnvManager. The object holds the message state; configure it with the
+    environment here); use EmailManagerFactory to build a Gmail OAuth2 instance
+    from an EnvManager. The object holds the message state; configure it with the
     set_* / add_* methods (which chain) and then call send():
 
         email = EmailManagerFactory.from_env(env, encryption)
@@ -299,44 +299,45 @@ class EmailManager:
 
 
 class EmailManagerFactory:
-    """Logic layer: reads SMTP settings from an EnvManager and builds an EmailManager."""
+    """Logic layer: reads the Gmail settings from an EnvManager and builds an EmailManager.
 
-    @staticmethod
-    def from_env(env, encryption) -> EmailManager:
-        """Build an EmailManager from an EnvManager and an EncryptionManager.
+    Email always goes through Gmail (smtp.gmail.com) with OAuth2 (XOAUTH2), so
+    no password or app password is stored.
+    """
+
+    #region CONSTANTS
+    GMAIL_SMTP_HOST = "smtp.gmail.com"
+    GMAIL_SMTP_PORT = 587
+    GMAIL_SMTP_SECURITY = "starttls"
+    #endregion
+
+    @classmethod
+    def from_env(cls, env, encryption, oauth: OAuthManager | None = None) -> EmailManager:
+        """Build a Gmail OAuth2 EmailManager from an EnvManager and an EncryptionManager.
 
         Expects these .env keys:
-            SMTP_HOST, EMAIL_SENDER
+            SMTP_USER       the Gmail address that signs in and sends the email
+            OAUTH_*         the OAuth client and refresh token (see OAuthManagerFactory)
+        Optional:
+            EMAIL_SENDER    From address (default: SMTP_USER); Gmail only accepts
+                            SMTP_USER or one of its "Send mail as" aliases
             SMTP_PORT (587), SMTP_SECURITY (starttls), SMTP_TIMEOUT (30)
-            SMTP_AUTH       oauth2 or password (default: password)
-            SMTP_USER       login account; required for oauth2
-            SMTP_PASSWORD   encrypted; only for SMTP_AUTH = password
-            OAUTH_*         only for SMTP_AUTH = oauth2 (see OAuthManagerFactory)
+                            Gmail also accepts port 465 with ssl
 
-        `encryption` decrypts the stored secrets (SMTP_PASSWORD / OAUTH_*).
+        `encryption` decrypts the stored OAUTH_* secrets. Pass `oauth` to use an
+        already authorized OAuthManager instead of OAUTH_REFRESH_TOKEN
+        (script/create_oauth_token.py does this to check a new token).
         """
-        auth = (env.get("SMTP_AUTH") or "password").lower()
-        if auth not in EmailManager.VALID_AUTHS:
-            raise ValueError(f"SMTP_AUTH must be one of {EmailManager.VALID_AUTHS}, got '{auth}'.")
-
-        settings = {
-            "smtp_host": env.require("SMTP_HOST"),
-            "smtp_port": env.get_int("SMTP_PORT", 587),
-            "smtp_security": env.get("SMTP_SECURITY", "starttls"),
-            "smtp_timeout": env.get_int("SMTP_TIMEOUT", 30),
-            "sender": env.require("EMAIL_SENDER"),
-            "smtp_auth": auth,
-        }
-        if auth == "oauth2":
-            smtp_user = env.require("SMTP_USER")
+        smtp_user = env.require("SMTP_USER")
+        if oauth is None:
             oauth = OAuthManagerFactory.from_env(env, encryption)
-            return EmailManager(
-                smtp_user=smtp_user,
-                oauth_token_provider=oauth.get_access_token,
-                **settings,
-            )
         return EmailManager(
-            smtp_user=env.get("SMTP_USER", "") or "",
-            smtp_password=encryption.decrypt_text(env.require("SMTP_PASSWORD")),
-            **settings,
+            smtp_host=cls.GMAIL_SMTP_HOST,
+            smtp_port=env.get_int("SMTP_PORT", cls.GMAIL_SMTP_PORT),
+            smtp_security=env.get("SMTP_SECURITY", cls.GMAIL_SMTP_SECURITY),
+            smtp_user=smtp_user,
+            smtp_timeout=env.get_int("SMTP_TIMEOUT", 30),
+            sender=env.get("EMAIL_SENDER") or smtp_user,
+            smtp_auth="oauth2",
+            oauth_token_provider=oauth.get_access_token,
         )
