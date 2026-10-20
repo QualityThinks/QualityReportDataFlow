@@ -5,7 +5,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from EnvManager import EnvManager
-from EmailManager import EmailManager
+from EmailManager import EmailManager, EmailManagerFactory
 from EncryptionManager import EncryptionManagerFactory
 
 # Optional attachment: the report moved by TestFileManager.py (if present).
@@ -37,31 +37,19 @@ def main():
 
     env = load_environment()
 
-    # Logic layer: read SMTP settings from .env and build the EmailManager.
-    # SMTP_PASSWORD is stored encrypted; decrypt it before assigning to EmailManager.
+    # Logic layer: read the Gmail OAuth2 settings from .env and build the
+    # EmailManager. The factory decrypts the stored OAUTH_* secrets.
     try:
         encryption = EncryptionManagerFactory.from_env(env)
-        email = EmailManager(
-            smtp_host=env.require("SMTP_HOST"),
-            smtp_port=env.get_int("SMTP_PORT", 587),
-            smtp_security=env.get("SMTP_SECURITY", "starttls"),
-            smtp_user=env.get("SMTP_USER", "") or "",
-            smtp_password=encryption.decrypt_text(env.require("SMTP_PASSWORD")),
-            smtp_timeout=env.get_int("SMTP_TIMEOUT", 30),
-            sender=env.get("EMAIL_SENDER", "") or "",
-        )
+        email = EmailManagerFactory.from_env(env, encryption)
     except RuntimeError as error:
-        print(f"SMTP is not configured: {error}")
-        print("Add the SMTP_* keys to .env (see .env.example) to run the send test.")
+        print(f"Gmail is not configured: {error}")
+        print("Add SMTP_USER and the OAUTH_* keys to .env (see .env.example) to run the send test.")
         return
 
-    # Fall back to EMAIL_SENDER / EMAIL_RECIPIENT from .env if present.
-    sender = env.get("EMAIL_SENDER")
     recipient = env.get("EMAIL_RECIPIENT")
     subject = env.get("EMAIL_SUBJECT", "Quality Report")
 
-    if sender:
-        email.set_sender(sender)
     if recipient:
         email.set_to(recipient)
 

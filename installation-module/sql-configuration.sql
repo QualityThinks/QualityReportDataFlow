@@ -1,14 +1,10 @@
--- 1) Indexes (run once). The covering index lets MySQL read UB/UH
--- straight from the index without touching process_raw rows.
-CREATE INDEX ix_pr_hid_cover
-    ON process_raw (ProcessR_ProcessHID, ProcessR_RokokKe, ProcessR_UB, ProcessR_UH);
-CREATE INDEX ix_ph_leader ON process_header (ProcessH_LeaderID);
-CREATE INDEX ix_ph_staff ON process_header (ProcessH_StaffID);
+-- Quality Report Data Flow: database setup.
+-- Run this on the database that holds the process_header, process_raw and
+-- member tables (the one set as MYSQL_DATABASE in .env).
+--
+-- Safe to run again: the view is replaced, and "Duplicate key name" errors
+-- from the CREATE INDEX lines at the end only mean the indexes already exist.
 
--- 2) Same columns, same values, same grouping — no derived table,
--- no second join to process_header.
--- Slot rule is unchanged: scale 1 -> RokokKe, scale 2 -> RokokKe + 3,
--- any other scale_no -> NULL (row still counts toward Avg CW).
 CREATE OR REPLACE VIEW daily_report AS
 SELECT
     l.Emp_ID AS `ID GL`,
@@ -51,3 +47,9 @@ GROUP BY
     s.Emp_ID,
     s.Emp_Name,
     ph.start_at;
+
+-- Indexes that make the view faster.
+CREATE INDEX ix_pr_hid_cover
+    ON process_raw (ProcessR_ProcessHID, ProcessR_RokokKe, ProcessR_UB, ProcessR_UH);
+CREATE INDEX ix_ph_leader ON process_header (ProcessH_LeaderID);
+CREATE INDEX ix_ph_staff ON process_header (ProcessH_StaffID);

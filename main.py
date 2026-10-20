@@ -182,8 +182,6 @@ def connect_to_mysql_database(
     encryption: EncryptionManager,
 ) -> DatabaseConnection:
     """Create the MySQL database connection."""
-    del encryption
-
     mysql_port = env.require("MYSQL_PORT")
 
     try:
@@ -191,12 +189,25 @@ def connect_to_mysql_database(
     except (TypeError, ValueError) as error:
         raise ValueError("MYSQL_PORT must contain a valid integer.") from error
 
+    # MYSQL_PASSWORD is stored encrypted; empty means the user has no password.
+    mysql_password = env.get("MYSQL_PASSWORD", "")
+
+    if mysql_password:
+        try:
+            mysql_password = encryption.decrypt_text(mysql_password)
+        except Exception as error:  # noqa: BLE001
+            raise ValueError(
+                "MYSQL_PASSWORD could not be decrypted. Set it to the output of "
+                'script\\encrypt_value.py "<password>", or leave it empty when '
+                "the MySQL user has no password."
+            ) from error
+
     return DatabaseConnection(
         env.require("MYSQL_HOST"),
         parsed_port,
         env.require("MYSQL_DATABASE"),
         env.require("MYSQL_USER"),
-        env.get("MYSQL_PASSWORD", ""),
+        mysql_password,
     )
 
 
